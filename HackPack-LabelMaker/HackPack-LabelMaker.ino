@@ -47,7 +47,8 @@ ezButton button1(14); //joystick button handler
 #define PRINT_CONF "  PRINT LABEL?  " //try changing these, or making new ones and adding conditions for when they are used
 #define PRINTING "    PRINTING    " // NOTE: this text must be 16 characters or LESS in order to fit on the screen correctly
 #define MENU_CLEAR ":                " //this one clears the menu for editing
-#define LOADING_SPEED 1
+#define LOADING_SPEED 250
+#define MAXTEXTLENGTH 11  // Adjust as needed
 
 
 //text variables
@@ -65,9 +66,10 @@ const int joystickButtonThreshold = 200;  // Adjust this threshold value based o
 double totalVectorDrawing = 0;
 double currentVectorDrawing = 0;
 double drawingPrecentage;
+uint8_t character;
 
 // Menu parameters
-const char alphabet[] = "_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?,.#@"; //alphabet menu
+const char alphabet[] = "_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?,.#@}~$"; //alphabet menu
 const int alphabetSize = sizeof(alphabet) - 1;
 String text;  // Store the label text
 String textLine1;
@@ -109,7 +111,7 @@ jState prevJoyState = MIDDLE;
 boolean pPenOnPaper = false; // pen on paper in previous cycle
 //int lineCount = 0;
 
-const byte* invertedCharacters[128];
+const byte* invertedCharacters[130];
 
 int xpos = 0;
 int ypos = 0;
@@ -744,6 +746,36 @@ const byte invertedAt[8] PROGMEM = {
     B10001
 };
 
+const byte invertedCloseBracket[8] PROGMEM = {
+    B10111,
+    B11011,
+    B11011,
+    B11101,
+    B11011,
+    B11011,
+    B10111
+};
+
+const byte invertedRightLine[8] PROGMEM = {
+    B11111,
+    B11011,
+    B11101,
+    B00000,
+    B11101,
+    B11011,
+    B11111
+};
+
+const byte invertedDollar[8] PROGMEM = {
+    B11011,
+    B10000,
+    B01011,
+    B10001,
+    B11010,
+    B00001,
+    B11011
+};
+
 const byte twenty[8] PROGMEM = {
     B10000,
     B10000,
@@ -833,6 +865,9 @@ void setupInvertedChars(){
   invertedCharacters['.'] = invertedPeriod;
   invertedCharacters['#'] = invertedHashtag;
   invertedCharacters['@'] = invertedAt;
+//  invertedCharacters["}"] = invertedCloseBraket;
+//  invertedCharacters["~"] = invertedRightLine;
+  //invertedCharacters["$"] = invertedDollar;
 }
 
 
@@ -843,8 +878,7 @@ void setupInvertedChars(){
 void setup() {
   lcd.init();
   lcd.backlight();
-  createCustomChar(0,loading1);
-  createCustomChar(1,loading2);
+
   lcd.setCursor(0, 0);
   lcd.print(INIT_MSG);  // print start up message
 
@@ -951,6 +985,7 @@ void loop() {
       if (prevState != Editing) {
         lcd.clear();
         prevState = Editing;
+        createCustomChar(2,inverted_);
       }
       //lcd.clear();
       lcd.setCursor(0, 0);
@@ -966,7 +1001,16 @@ void loop() {
         if (currentCharacter > 0) {
           currentCharacter--;
           lcd.print(alphabet[currentCharacter]);
-          createCustomChar(2,invertedCharacters[alphabet[currentCharacter]]);
+          if (alphabet[currentCharacter] != '}' && alphabet[currentCharacter] != '~' && alphabet[currentCharacter] != '$'){
+            Serial.println("Norm");
+            createCustomChar(2,invertedCharacters[alphabet[currentCharacter]]);
+          } else if (alphabet[currentCharacter] == '}'){
+            createCustomChar(2, invertedCloseBracket);
+          } else if (alphabet[currentCharacter] == '~') {
+            createCustomChar(2, invertedRightLine);  
+          } else if (alphabet[currentCharacter] == '$'){
+            createCustomChar(2, invertedDollar);  
+          }
           //////Serial.println("Character UP");
         }
         delay(250);  // Delay to prevent rapid scrolling
@@ -976,7 +1020,16 @@ void loop() {
         if (currentCharacter < (alphabetSize - 1)) {
           currentCharacter++;  //increment character value
           lcd.print(alphabet[currentCharacter]);
-          createCustomChar(2,invertedCharacters[alphabet[currentCharacter]]);
+          if (alphabet[currentCharacter] != '}' && alphabet[currentCharacter] != '~' && alphabet[currentCharacter] != '$'){
+            Serial.println("DownNorm");
+            createCustomChar(2,invertedCharacters[alphabet[currentCharacter]]);
+          } else if (alphabet[currentCharacter] == '}'){
+            createCustomChar(2, invertedCloseBracket);
+          } else if (alphabet[currentCharacter] == '~') {
+            createCustomChar(2, invertedRightLine);  
+          } else if (alphabet[currentCharacter] == '$'){
+            createCustomChar(2, invertedDollar);  
+          }
           //////Serial.println("Character DOWN");
         }
         delay(250);  // Delay to prevent rapid scrolling
@@ -1002,7 +1055,7 @@ void loop() {
         delay(250);  // Delay to prevent rapid multiple presses
 
       } else if (joyRight) {  //RIGHT adds a space or character to the label
-        if (text.length() < 14){
+        if (text.length() < MAXTEXTLENGTH){
           if (currentCharacter == 0) {
             text += ' ';  //add a space if the character is _
           } else {
@@ -1032,6 +1085,7 @@ void loop() {
     case PrintConfirmation:
       // Print confirmation mode
       if (prevState == Editing) {
+        createCustomChar(7, invertRightArrow);
         lcd.setCursor(0, 0);    //move cursor to the first line
         lcd.print(PRINT_CONF);  //print menu text
         lcd.setCursor(0, 1);    // move cursor to the second line
@@ -1061,7 +1115,7 @@ void loop() {
       if (millis() % 600 < 400) {  // Blink every 500 ms
         lcd.print(">");
       } else {
-        lcd.print(" ");
+        lcd.write(7);
       }
 
       if (button1.isPressed()) {    //handles clicking options in print confirmation
@@ -1085,7 +1139,8 @@ void loop() {
         lcd.setCursor(0, 0);
         lcd.print(PRINTING);  //update screen
         initPrintingProgress();
-        totalVectorDrawing = text.length() * 14;
+        currentVectorDrawing = 0;
+        totalVectorDrawing = calculateTotalVectors();
       }
 
       // ----------------------------------------------- plot text
@@ -1096,7 +1151,7 @@ void loop() {
       ypos = 0;
 
       text = "";
-      yStepper.step(-2250);
+      homeYAxis();
       releaseMotors();
       lcd.clear();
       currentState = Editing;
@@ -1117,6 +1172,7 @@ void plotText(String &str, int x, int y) {  //takes in our label as a string, an
     if (byte(c) != 195) {
       if (c == ' ') {  //if it's a space, add a space.
         pos += space;
+        currentVectorDrawing += 5;
       } else {
         plotCharacter(c, x + pos, y);
         pos += space;  //scale is multiplied by 4 here to convert it to steps (because it normally get's multiplied by a coordinate with a max of 4)
@@ -1129,7 +1185,7 @@ void plotText(String &str, int x, int y) {  //takes in our label as a string, an
   releaseMotors();
 }
 
-void plotCharacter(char c, int x, int y) {  //this receives info from plotText for which character to plot,
+void plotCharacter(char b, int x, int y) {  //this receives info from plotText for which character to plot,
   // first it does some logic to make specific tweaks depending on the character, so some characters need more space, others less,
   // and some we even want to swap (in the case of space, we're swapping _ (underscore) and space so that we have something to show on the screen)
 
@@ -1139,89 +1195,8 @@ void plotCharacter(char c, int x, int y) {  //this receives info from plotText f
   ////Serial.print(">");
 
   //the following if statements handle character specific changes by shifting / swapping prior to drawing
-  uint8_t character = 38;
-  if (uint8_t(c) > 64 and uint8_t(c) < 91) {  //A...Z
-    character = uint8_t(c) - 65;
-  }
-  if (uint8_t(c) > 96 and uint8_t(c) < 123) {  //A...Z
-    character = uint8_t(c) - 97;
-  }
-  if (uint8_t(c) > 47 and uint8_t(c) < 58) {  //0...9
-    character = uint8_t(c) - 22;
-  }
-  if (uint8_t(c) == 164 || uint8_t(c) == 132) {  //ä,Ä
-    character = 39;
-  }
-  if (uint8_t(c) == 182 || uint8_t(c) == 150) {  //ö,Ö
-    character = 40;
-  }
-  if (uint8_t(c) == 188 || uint8_t(c) == 156) {  //ü,Ü
-    character = 41;
-  }
-  if (uint8_t(c) == 44) {  // ,
-    character = 42;
-  }
-  if (uint8_t(c) == 45) {  // -
-    character = 43;
-  }
-  if (uint8_t(c) == 46) {  // .
-    character = 44;
-  }
-  if (uint8_t(c) == 33) {  // !
-    character = 45;
-  }
-  if (uint8_t(c) == 63) {  // ?
-    character = 46;
-  }
-
-  if (uint8_t(c) == 123) { /*{ ß*/
-    character = 47;
-  }
-  if (uint8_t(c) == 39) { /*'*/
-    character = 48;
-  }
-  if (uint8_t(c) == 38) { /*&*/
-    character = 49;
-  }
-  if (uint8_t(c) == 43) { /*+*/
-    character = 50;
-  }
-  if (uint8_t(c) == 58) { /*:*/
-    character = 51;
-  }
-  if (uint8_t(c) == 59) { /*;*/
-    character = 52;
-  }
-  if (uint8_t(c) == 34) { /*"*/
-    character = 53;
-  }
-  if (uint8_t(c) == 35) { /*#*/
-    character = 54;
-  }
-  if (uint8_t(c) == 40) { /*(*/
-    character = 55;
-  }
-  if (uint8_t(c) == 41) { /*)*/
-    character = 56;
-  }
-  if (uint8_t(c) == 61) { /*=*/
-    character = 57;
-  }
-  if (uint8_t(c) == 64) { /*@*/
-    character = 58;
-  }
-  if (uint8_t(c) == 42) { /***/
-    character = 59;
-  }
-  if (uint8_t(c) == 125) { /*} Smiley*/
-    character = 60;
-  }
-  if (uint8_t(c) == 126) { /*~ Open mouth Smiley*/
-    character = 61;
-  }
-  if (uint8_t(c) == 36) { /*$ Heart*/
-    character = 62;
-  }
+   character = 38;
+  setCharNumber(b);
   ////Serial.print("letter: ");
   ////Serial.println(c);
 
@@ -1371,8 +1346,10 @@ void releaseMotors() {
 }
 
 void homeYAxis() {
-  lcd.setCursor(4, 1);
-  lcd.print("Loading");
+  createCustomChar(0,loading1);
+  createCustomChar(1,loading2);
+  lcd.setCursor(1, 1);
+  lcd.print("Homing Y Axis");
 
   int i = 0;
   int b = 0;
@@ -1436,7 +1413,8 @@ void initPrintingProgress(){
 }
 
 void printingProgress() {
-  // Ensure proper percentage calculation
+  Serial.println(totalVectorDrawing);
+  // Ensure propor percentage calculation
   float drawingPrecentage = (currentVectorDrawing / (float)totalVectorDrawing) * 100;
 
   // Convert percentage to char array (avoiding String)
@@ -1464,7 +1442,114 @@ void printingProgress() {
   }
 
   // Display percentage value
-  lcd.setCursor(6, 1);  // Adjust position as needed
+  lcd.setCursor(5, 1);  // Adjust position as needed
   lcd.print(dp);
   lcd.print("%");
+}
+
+double calculateTotalVectors(){
+  double toReturn = text.length() * 14;
+  Serial.println(text.length()-1);
+  for(int n =text.length()-1; n >= 0; n--){
+    char currentChar = text.charAt(n);
+    Serial.println(String(currentChar));
+    setCharNumber(currentChar);
+    
+    for (int m =0; m < 14; m++){
+       if (pgm_read_byte(&vector[character][m]) == 200){
+          toReturn-=1;
+          Serial.println("Subtract");
+       }
+    }
+  }
+  Serial.println(toReturn);
+  return toReturn;
+}
+
+void setCharNumber(char c){
+    
+  if (uint8_t(c) > 64 and uint8_t(c) < 91) {  //A...Z
+    character = uint8_t(c) - 65;
+  }
+  if (uint8_t(c) > 96 and uint8_t(c) < 123) {  //A...Z
+    character = uint8_t(c) - 97;
+  }
+  if (uint8_t(c) > 47 and uint8_t(c) < 58) {  //0...9
+    character = uint8_t(c) - 22;
+  }
+  if (uint8_t(c) == 164 || uint8_t(c) == 132) {  //ä,Ä
+    character = 39;
+  }
+  if (uint8_t(c) == 182 || uint8_t(c) == 150) {  //ö,Ö
+    character = 40;
+  }
+  if (uint8_t(c) == 188 || uint8_t(c) == 156) {  //ü,Ü
+    character = 41;
+  }
+  if (uint8_t(c) == 44) {  // ,
+    character = 42;
+  }
+  if (uint8_t(c) == 45) {  // -
+    character = 43;
+  }
+  if (uint8_t(c) == 46) {  // .
+    character = 44;
+  }
+  if (uint8_t(c) == 33) {  // !
+    character = 45;
+  }
+  if (uint8_t(c) == 63) {  // ?
+    character = 46;
+  }
+  if (uint8_t(c) == 123) { /*{ ß*/
+    character = 47;
+  }
+  if (uint8_t(c) == 39) { /*'*/
+    character = 48;
+  }
+  if (uint8_t(c) == 38) { /*&*/
+    character = 49;
+  }
+  if (uint8_t(c) == 43) { /*+*/
+    character = 50;
+  }
+  if (uint8_t(c) == 58) { /*:*/
+    character = 51;
+  }
+  if (uint8_t(c) == 59) { /*;*/
+    character = 52;
+  }
+  if (uint8_t(c) == 34) { /*"*/
+    character = 53;
+  }
+  if (uint8_t(c) == 35) { /*#*/
+    character = 54;
+  }
+  if (uint8_t(c) == 40) { /*(*/
+    character = 55;
+  }
+  if (uint8_t(c) == 41) { /*)*/
+    character = 56;
+  }
+  if (uint8_t(c) == 61) { /*=*/
+    character = 57;
+  }
+  if (uint8_t(c) == 64) { /*@*/
+    character = 58;
+  }
+  if (uint8_t(c) == 42) { /***/
+    character = 59;
+  }
+  if (uint8_t(c) == 125) { /*} Smiley*/
+    character = 60;
+  }
+  if (uint8_t(c) == 126) { /*~ Open mouth Smiley*/
+    character = 61;
+  }
+  if (uint8_t(c) == 36) { /*$ Heart*/
+    character = 62;
+  }
+  Serial.print("  ->");
+  Serial.print(character);
+  Serial.println("<-   ");
 }
